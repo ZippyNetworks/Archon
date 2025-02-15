@@ -1,3 +1,8 @@
+# Zippy's Archon (Fork of Cole Medin’s Archon)
+
+This is a customized fork of [Archon by Cole Medin](https://github.com/coleam00/Archon). 
+It includes additional branding and features maintained by Zippy. 
+
 I am building a fork with these goals:
 
 # Refactor Archon V2 Into a More Modular “Master Orchestrator” System
