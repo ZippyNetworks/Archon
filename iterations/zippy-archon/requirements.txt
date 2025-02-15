@@ -1,0 +1,9 @@
+# zippy-archon/requirements.txt
+
+fastapi==0.103.0
+uvicorn==0.23.2
+requests==2.31.0
+streamlit==1.27.0
+pydantic_ai==0.0.22
+langgraph==0.2.69
+python-dotenv==1.0.0
