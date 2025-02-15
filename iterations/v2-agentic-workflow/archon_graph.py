@@ -1,16 +1,22 @@
 # archon_graph.py
 
-from typing import TypedDict, Annotated, List
+from typing import TypedDict, Annotated, List, Optional
+import os
+import functools
+import traceback
+from dotenv import load_dotenv
+
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
-import os
-from dotenv import load_dotenv
+
 load_dotenv()
 
-# Agents
 base_url = os.getenv('BASE_URL', 'https://api.openai.com/v1')
 api_key = os.getenv('LLM_API_KEY', 'no-llm-api-key-provided')
 
+# -------------------------------------------------------------------
+# AGENTS
+# -------------------------------------------------------------------
 reasoner_llm_model = os.getenv('REASONER_MODEL', 'o3-mini')
 reasoner = Agent(
     OpenAIModel(reasoner_llm_model, base_url=base_url, api_key=api_key),
@@ -28,59 +34,103 @@ end_conversation_agent = Agent(
     system_prompt="Your job is to end a conversation..."
 )
 
-# This typed dictionary defines the shape of the state that flows through the graph
+# -------------------------------------------------------------------
+# STATE DEFINITION
+# -------------------------------------------------------------------
 class AgentState(TypedDict):
     latest_user_message: str
     messages: Annotated[List[bytes], lambda x, y: x + y]
     scope: str
 
-# Node function: define the scope with the reasoner
+    # We'll store error info here
+    error_log: Optional[List[str]]
+    error_retries: Optional[dict]
+
+# -------------------------------------------------------------------
+# ERROR-HANDLING DECORATOR
+# -------------------------------------------------------------------
+def error_handler_decorator(node_name: str, max_retries: int = 1):
+    """
+    Decorator to catch errors in node functions, store them in state['error_log'],
+    and possibly route to 'diagnose_errors' if threshold is reached.
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(state: AgentState, *args, **kwargs):
+            # Ensure we have error_log / error_retries in state
+            if "error_log" not in state:
+                state["error_log"] = []
+            if "error_retries" not in state:
+                state["error_retries"] = {}
+
+            attempt = state["error_retries"].get(node_name, 0)
+
+            try:
+                result = await func(state, *args, **kwargs)
+                # If success, reset retry count
+                state["error_retries"][node_name] = 0
+                return result
+            except Exception as e:
+                # Log the error
+                trace = traceback.format_exc()
+                error_message = f"Error in node '{node_name}': {str(e)}\nTraceback:\n{trace}"
+                state["error_log"].append(error_message)
+                
+                attempt += 1
+                state["error_retries"][node_name] = attempt
+
+                if attempt >= max_retries:
+                    # Too many retries -> route to 'diagnose_errors'
+                    return {"__route__": "diagnose_errors"}
+                else:
+                    # Re-raise to let the flow attempt again or fail up
+                    raise
+        return wrapper
+    return decorator
+
+# -------------------------------------------------------------------
+# NODE FUNCTIONS
+# -------------------------------------------------------------------
+@error_handler_decorator("define_scope_with_reasoner", max_retries=2)
 async def define_scope_with_reasoner(state: AgentState):
     """
-    Your logic for the reasoner node goes here. Typically:
-    1) Possibly fetch documentation pages
-    2) Use reasoner.run(...) to create a scope
-    3) Return an updated state
+    Use the reasoner agent to define a scope for building an AI agent.
     """
-    # Example outline (update with your real code):
     user_input = state["latest_user_message"]
-    # ... call the reasoner agent ...
-    # scope = ...
-    # Save the scope to a file or memory if needed
-    return {"scope": "<your-scope-here>"}
+    result = await reasoner.run(f"Analyze user request: {user_input}\n"
+                                "Return a scope for building a Pydantic AI agent.")
+    scope_text = result.data
+    # Save it in state
+    return {"scope": scope_text}
 
-# Node function: main coder agent
+@error_handler_decorator("coder_agent", max_retries=2)
 async def coder_agent(state: AgentState, writer=None):
     """
-    This node uses your coding agent to generate code for the user.
+    Main coding agent node. Takes the scope/user messages and builds code or modifies existing code.
     """
-    # Example outline:
+    # For example's sake:
     # user_input = state["latest_user_message"]
-    # message_history = state["messages"]
     # ...
-    # return {"messages": [result.new_messages_json()]}
-    return {"messages": []}  # placeholder
+    return {"messages": []}  # or your real logic
 
-# Node function: route user message
+@error_handler_decorator("route_user_message", max_retries=1)
 async def route_user_message(state: AgentState):
     """
-    Uses the router_agent to decide if we 'finish_conversation' or 'coder_agent'.
+    Uses the router_agent to determine if we should keep coding or finish the conversation.
     """
     user_msg = state["latest_user_message"]
-    # Example logic (update with your real code):
     result = await router_agent.run(user_msg)
+    # If the router decides we should finish, check for a keyword
     if "finish" in result.data.lower():
         return "finish_conversation"
-    else:
-        return "coder_agent"
+    return "coder_agent"
 
-# Node function: finish conversation
+@error_handler_decorator("finish_conversation", max_retries=1)
 async def finish_conversation(state: AgentState, writer=None):
     """
-    Ends the conversation, possibly giving instructions for how to run the code generated.
+    End the conversation, using the end_conversation_agent for a final message.
     """
     user_msg = state["latest_user_message"]
-    # Example logic:
-    # result = await end_conversation_agent.run(user_msg)
-    # return {"messages": [result.new_messages_json()]}
-    return {"messages": []}  # placeholder
+    result = await end_conversation_agent.run(f"User last message: {user_msg}\nSay goodbye and provide usage tips.")
+    # Add that to message history if needed
+    return {"messages": [result.new_messages_json()]}
