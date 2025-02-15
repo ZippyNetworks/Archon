@@ -1,114 +1,66 @@
+# streamlit_ui.py
+
 from __future__ import annotations
-from typing import Literal, TypedDict
-from langgraph.types import Command
-from openai import AsyncOpenAI
-from supabase import Client
 import streamlit as st
-import logfire
 import asyncio
-import json
-import uuid
-import os
+from orchestrator import Orchestrator
 
-# Import all the message part classes
-from pydantic_ai.messages import (
-    ModelMessage,
-    ModelRequest,
-    ModelResponse,
-    SystemPromptPart,
-    UserPromptPart,
-    TextPart,
-    ToolCallPart,
-    ToolReturnPart,
-    RetryPromptPart,
-    ModelMessagesTypeAdapter
-)
+# If you need any other imports, like your DB or logs, keep them.
+# from openai import AsyncOpenAI
+# from supabase import Client
 
-from archon_graph import agentic_flow
-
-# Load environment variables
-from dotenv import load_dotenv
-load_dotenv()
-
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-supabase: Client = Client(
-    os.getenv("SUPABASE_URL"),
-    os.getenv("SUPABASE_SERVICE_KEY")
-)
-
-# Configure logfire to suppress warnings (optional)
-logfire.configure(send_to_logfire='never')
+orchestrator = Orchestrator()
 
 @st.cache_resource
 def get_thread_id():
+    import uuid
     return str(uuid.uuid4())
 
 thread_id = get_thread_id()
 
 async def run_agent_with_streaming(user_input: str):
-    """
-    Run the agent with streaming text for the user_input prompt,
-    while maintaining the entire conversation in `st.session_state.messages`.
-    """
-    config = {
-        "configurable": {
-            "thread_id": thread_id
-        }
-    }
-
-    # First message from user
+    # If this is the very first user message (i.e., we only have a single system msg in state),
+    # start a new flow
     if len(st.session_state.messages) == 1:
-        async for msg in agentic_flow.astream(
-                {"latest_user_message": user_input}, config, stream_mode="custom"
-            ):
-                yield msg
-    # Continue the conversation
+        async for partial_text in orchestrator.start_flow(user_input):
+            yield partial_text
     else:
-        async for msg in agentic_flow.astream(
-            Command(resume=user_input), config, stream_mode="custom"
-        ):
-            yield msg
+        # Otherwise, resume the flow
+        async for partial_text in orchestrator.resume_flow(user_input):
+            yield partial_text
 
-
-async def main():
+def main():
     st.title("Archon - Agent Builder")
-    st.write("Describe to me an AI agent you want to build and I'll code it for you with Pydantic AI.")
-    st.write("Example: Build me an AI agent that can search the web with the Brave API.")
+    st.write("Describe an AI agent you want to build...")
 
-    # Initialize chat history in session state if not present
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Display chat messages from history on app rerun
-    for message in st.session_state.messages:
-        message_type = message["type"]
-        if message_type in ["human", "ai", "system"]:
-            with st.chat_message(message_type):
-                st.markdown(message["content"])    
+    # Show previous messages
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["type"]):
+            st.markdown(msg["content"])
 
-    # Chat input for the user
+    # Chat input
     user_input = st.chat_input("What do you want to build today?")
-
     if user_input:
-        # We append a new request to the conversation explicitly
         st.session_state.messages.append({"type": "human", "content": user_input})
-        
-        # Display user prompt in the UI
         with st.chat_message("user"):
             st.markdown(user_input)
 
-        # Display assistant response in chat message container
+        # Placeholder for streaming output
         response_content = ""
         with st.chat_message("assistant"):
-            message_placeholder = st.empty()  # Placeholder for updating the message
-            # Run the async generator to fetch responses
-            async for chunk in run_agent_with_streaming(user_input):
-                response_content += chunk
-                # Update the placeholder with the current response content
-                message_placeholder.markdown(response_content)
-        
-        st.session_state.messages.append({"type": "ai", "content": response_content})
+            message_placeholder = st.empty()
+            # Stream
+            async def handle_stream():
+                async for chunk in run_agent_with_streaming(user_input):
+                    nonlocal response_content
+                    response_content += chunk
+                    message_placeholder.markdown(response_content)
+            asyncio.run(handle_stream())
 
+        st.session_state.messages.append({"type": "ai", "content": response_content})
 
 if __name__ == "__main__":
     asyncio.run(main())
