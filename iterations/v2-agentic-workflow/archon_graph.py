@@ -83,7 +83,7 @@ def error_handler_decorator(node_name: str, max_retries: int = 1):
                     # Too many retries -> route to 'diagnose_errors'
                     return {"__route__": "diagnose_errors"}
                 else:
-                    # Re-raise to let the flow attempt again or fail up
+                    # Re-raise to let the flow attempt again or bubble up
                     raise
         return wrapper
     return decorator
@@ -97,10 +97,11 @@ async def define_scope_with_reasoner(state: AgentState):
     Use the reasoner agent to define a scope for building an AI agent.
     """
     user_input = state["latest_user_message"]
-    result = await reasoner.run(f"Analyze user request: {user_input}\n"
-                                "Return a scope for building a Pydantic AI agent.")
+    result = await reasoner.run(
+        f"Analyze user request: {user_input}\n"
+        "Return a scope for building a Pydantic AI agent."
+    )
     scope_text = result.data
-    # Save it in state
     return {"scope": scope_text}
 
 @error_handler_decorator("coder_agent", max_retries=2)
@@ -108,29 +109,39 @@ async def coder_agent(state: AgentState, writer=None):
     """
     Main coding agent node. Takes the scope/user messages and builds code or modifies existing code.
     """
-    # For example's sake:
+    # Example:
     # user_input = state["latest_user_message"]
+    # result = await some_coder_agent.run(user_input, message_history=state["messages"])
     # ...
     return {"messages": []}  # or your real logic
 
 @error_handler_decorator("route_user_message", max_retries=1)
 async def route_user_message(state: AgentState):
     """
-    Uses the router_agent to determine if we should keep coding or finish the conversation.
+    Uses the router_agent to determine next step: keep coding, finish conversation,
+    or create a new tool (if user requests it).
     """
-    user_msg = state["latest_user_message"]
+    user_msg = state["latest_user_message"].lower()
     result = await router_agent.run(user_msg)
-    # If the router decides we should finish, check for a keyword
-    if "finish" in result.data.lower():
+
+    # Example logic:
+    if "finish" in user_msg:
         return "finish_conversation"
+    elif "create tool" in user_msg or "new plugin" in user_msg:
+        # This returns "create_tool" so the Orchestrator can route to "generate_tool_code"
+        return "create_tool"
+    
+    # Otherwise default path
     return "coder_agent"
 
 @error_handler_decorator("finish_conversation", max_retries=1)
 async def finish_conversation(state: AgentState, writer=None):
     """
-    End the conversation, using the end_conversation_agent for a final message.
+    End the conversation, possibly giving instructions for how to run the code generated.
     """
     user_msg = state["latest_user_message"]
-    result = await end_conversation_agent.run(f"User last message: {user_msg}\nSay goodbye and provide usage tips.")
-    # Add that to message history if needed
+    result = await end_conversation_agent.run(
+        f"User last message: {user_msg}\nSay goodbye and provide usage tips."
+    )
+    # If you'd like to store the final message:
     return {"messages": [result.new_messages_json()]}
