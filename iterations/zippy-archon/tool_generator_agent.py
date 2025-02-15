@@ -6,7 +6,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
 from archon_graph import AgentState
 
-# Suppose we have a plugin_manager with load_plugins
+# We assume you have a plugins directory with plugin_manager
 from plugins.plugin_manager import load_plugins
 
 load_dotenv()
@@ -39,13 +39,12 @@ async def finalize_new_tool(state: AgentState):
     if not code.strip():
         return {"tool_creation_status": "No code generated."}
 
-    file_name = "tool_generated.py"  # or parse from user_req
+    file_name = "tool_generated.py"
     file_path = os.path.join("plugins", file_name)
 
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(code)
 
-    # Reload so the new plugin is recognized
     load_plugins("plugins")
 
     return {"tool_creation_status": f"Plugin created: {file_name}"}
