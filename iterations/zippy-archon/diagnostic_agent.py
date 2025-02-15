@@ -7,8 +7,6 @@ from typing import Optional
 
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
-
-# Import AgentState from archon_graph (avoid circular imports)
 from archon_graph import AgentState
 
 load_dotenv()
