@@ -28,7 +28,7 @@ end_conversation_agent = Agent(
     system_prompt="Your job is to end a conversation..."
 )
 
-# This typed dictionary defines the shape of state that flows through the graph
+# This typed dictionary defines the shape of the state that flows through the graph
 class AgentState(TypedDict):
     latest_user_message: str
     messages: Annotated[List[bytes], lambda x, y: x + y]
@@ -36,24 +36,51 @@ class AgentState(TypedDict):
 
 # Node function: define the scope with the reasoner
 async def define_scope_with_reasoner(state: AgentState):
-    # Implementation from your original code...
-    # ...
-    return {"scope": scope}
+    """
+    Your logic for the reasoner node goes here. Typically:
+    1) Possibly fetch documentation pages
+    2) Use reasoner.run(...) to create a scope
+    3) Return an updated state
+    """
+    # Example outline (update with your real code):
+    user_input = state["latest_user_message"]
+    # ... call the reasoner agent ...
+    # scope = ...
+    # Save the scope to a file or memory if needed
+    return {"scope": "<your-scope-here>"}
 
 # Node function: main coder agent
 async def coder_agent(state: AgentState, writer=None):
-    # Implementation from your original code...
+    """
+    This node uses your coding agent to generate code for the user.
+    """
+    # Example outline:
+    # user_input = state["latest_user_message"]
+    # message_history = state["messages"]
     # ...
-    return {"messages": [result.new_messages_json()]}
+    # return {"messages": [result.new_messages_json()]}
+    return {"messages": []}  # placeholder
 
-# Node function: route user message to either continue coding or finish
+# Node function: route user message
 async def route_user_message(state: AgentState):
-    # Implementation from your original code...
-    # ...
-    return "coder_agent"  # or "finish_conversation"
+    """
+    Uses the router_agent to decide if we 'finish_conversation' or 'coder_agent'.
+    """
+    user_msg = state["latest_user_message"]
+    # Example logic (update with your real code):
+    result = await router_agent.run(user_msg)
+    if "finish" in result.data.lower():
+        return "finish_conversation"
+    else:
+        return "coder_agent"
 
 # Node function: finish conversation
 async def finish_conversation(state: AgentState, writer=None):
-    # Implementation from your original code...
-    # ...
-    return {"messages": [result.new_messages_json()]}
+    """
+    Ends the conversation, possibly giving instructions for how to run the code generated.
+    """
+    user_msg = state["latest_user_message"]
+    # Example logic:
+    # result = await end_conversation_agent.run(user_msg)
+    # return {"messages": [result.new_messages_json()]}
+    return {"messages": []}  # placeholder
