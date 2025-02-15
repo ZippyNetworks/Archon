@@ -18,6 +18,9 @@ from archon_graph import (
 # Import the diagnostic node
 from diagnostic_agent import diagnose_errors
 
+# NEW: Import tool generator node functions
+from tool_generator_agent import generate_tool_code, finalize_new_tool
+
 load_dotenv()
 
 class Orchestrator:
@@ -32,37 +35,52 @@ class Orchestrator:
     def _build_graph(self):
         builder = StateGraph(AgentState)
 
-        # Add nodes
+        # ----------------------
+        # Nodes
+        # ----------------------
         builder.add_node("define_scope_with_reasoner", define_scope_with_reasoner)
         builder.add_node("coder_agent", coder_agent)
         builder.add_node("get_next_user_message", self.get_next_user_message)
         builder.add_node("finish_conversation", finish_conversation)
         builder.add_node("diagnose_errors", diagnose_errors)
 
+        # NEW: Tool generator nodes
+        builder.add_node("generate_tool_code", generate_tool_code)
+        builder.add_node("finalize_new_tool", finalize_new_tool)
+
         # We allow dynamic routing from the node decorator's {"__route__": "diagnose_errors"}
         builder.add_dynamic_route("__route__")
 
+        # ----------------------
         # Edges
+        # ----------------------
+        # Standard flow
         builder.add_edge(START, "define_scope_with_reasoner")
         builder.add_edge("define_scope_with_reasoner", "coder_agent")
         builder.add_edge("coder_agent", "get_next_user_message")
 
-        # The route_user_message node returns either "coder_agent" or "finish_conversation"
+        # The route_user_message node returns "coder_agent", "finish_conversation",
+        # or possibly "create_tool" if user wants a new plugin.
         builder.add_conditional_edges(
             "get_next_user_message",
             route_user_message,
             {
                 "coder_agent": "coder_agent",
-                "finish_conversation": "finish_conversation"
+                "finish_conversation": "finish_conversation",
+                # ADD this if your route_user_message can return "create_tool"
+                "create_tool": "generate_tool_code"
             }
         )
         
         # End conversation leads to END
         builder.add_edge("finish_conversation", END)
 
-        # For now, after diagnosing errors, we end. 
-        # (You could route back to get_next_user_message if you want a user fix step.)
+        # After diagnosing errors, we end
         builder.add_edge("diagnose_errors", END)
+
+        # NEW: Once we generate code, we finalize it, then end (or you can route back to get_next_user_message)
+        builder.add_edge("generate_tool_code", "finalize_new_tool")
+        builder.add_edge("finalize_new_tool", END)
 
         return builder.compile(checkpointer=self.memory)
 
