@@ -1,7 +1,28 @@
-# Zippy's Archon (Fork of Cole Medin’s Archon)
+# Zippy's Archon (Fork of Archon by Cole Medin)
 
-This is a customized fork of [Archon by Cole Medin](https://github.com/coleam00/Archon). 
-It includes additional branding and features maintained by Zippy. 
+Zippy's Archon is a customized version of [Cole Medin's Archon](https://github.com/coleam00/Archon) project, 
+featuring additional branding, a refined plugin architecture, 
+and various enhancements for enterprise deployments.
+
+## Original Project & License
+
+The original Archon code is licensed under the MIT license (see [LICENSE](./LICENSE)), 
+and all credits go to Cole Medin. 
+We have retained all references and license terms from the original repository. 
+Any new features added by Zippy are also provided under the same open-source license.
+
+## What's New in Zippy's Archon
+
+- [Zippy Branding] UI enhancements, custom logos, theming
+- [Feature A] Self-Healing Orchestrator with advanced error handling
+- [Feature B] Tool Generator Sub-Agent for plugin creation
+
+## Getting Started
+
+Follow the original instructions from Archon below, or see [Zippy Setup](#zippy-setup) for extra steps...
+
+...
+
 
 I am building a fork with these goals:
 
