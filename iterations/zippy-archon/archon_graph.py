@@ -102,7 +102,6 @@ async def coder_agent(state: AgentState, writer=None):
     """
     Main coding agent node. Takes the scope/user messages and builds code or modifies existing code.
     """
-    # Example logic or placeholders
     return {"messages": []}
 
 @error_handler_decorator("route_user_message", max_retries=1)
